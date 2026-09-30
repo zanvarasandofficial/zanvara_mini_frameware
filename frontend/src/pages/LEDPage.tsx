@@ -26,7 +26,7 @@ import { ColorPicker } from '@/components/ui/color-picker'
 
 // Types
 interface LedConfig {
-  provider: 'none' | 'wled' | 'dw_leds'
+  provider: 'none' | 'wled' | 'dw_leds' | 'fluidnc'
   wled_ip?: string
   num_leds?: number
   gpio_pin?: number
@@ -115,9 +115,9 @@ export function LEDPage() {
     fetchConfig()
   }, [])
 
-  // Initialize DW LEDs when provider is dw_leds
+  // Initialize DW LEDs / FluidNC when provider is dw_leds or fluidnc
   useEffect(() => {
-    if (ledConfig?.provider === 'dw_leds') {
+    if (ledConfig?.provider === 'dw_leds' || ledConfig?.provider === 'fluidnc') {
       fetchDWLedsStatus()
       fetchEffectsAndPalettes()
       fetchEffectSettings()
@@ -478,7 +478,9 @@ export function LEDPage() {
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">LED Control</h1>
-        <p className="text-xs text-muted-foreground">DW LEDs - GPIO controlled LED strip</p>
+        <p className="text-xs text-muted-foreground">
+          {ledConfig.provider === 'fluidnc' ? 'FluidNC - Serial M150 G-Code LEDs' : 'DW LEDs - GPIO controlled LED strip'}
+        </p>
       </div>
 
       <Separator />

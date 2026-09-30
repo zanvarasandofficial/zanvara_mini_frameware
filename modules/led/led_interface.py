@@ -5,6 +5,7 @@ Provides a common abstraction layer for pattern manager integration.
 import asyncio
 from typing import Optional, Literal
 from modules.led.led_controller import LEDController, effect_loading as wled_loading, effect_idle as wled_idle, effect_connected as wled_connected, effect_playing as wled_playing
+from modules.led.fluidnc_led_controller import FluidNCLedController, effect_loading as fluidnc_loading, effect_idle as fluidnc_idle, effect_connected as fluidnc_connected, effect_playing as fluidnc_playing
 
 # Try to import DW LED controller - it requires RPi-specific dependencies
 try:
@@ -20,7 +21,7 @@ except ImportError:
     DW_LEDS_AVAILABLE = False
 
 
-LEDProviderType = Literal["wled", "dw_leds", "none"]
+LEDProviderType = Literal["wled", "dw_leds", "fluidnc", "none"]
 
 
 class LEDInterface:
@@ -48,6 +49,8 @@ class LEDInterface:
             speed = speed if speed is not None else 128
             intensity = intensity if intensity is not None else 128
             self._controller = DWLEDController(num_leds, gpio_pin, brightness, pixel_order=pixel_order, speed=speed, intensity=intensity)
+        elif provider == "fluidnc":
+            self._controller = FluidNCLedController()
 
     @property
     def is_configured(self) -> bool:
@@ -55,8 +58,8 @@ class LEDInterface:
         return self._controller is not None
 
     def update_config(self, provider: LEDProviderType, ip_address: Optional[str] = None,
-                     num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, pixel_order: Optional[str] = None,
-                     brightness: Optional[float] = None, speed: Optional[int] = None, intensity: Optional[int] = None):
+                      num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, pixel_order: Optional[str] = None,
+                      brightness: Optional[float] = None, speed: Optional[int] = None, intensity: Optional[int] = None):
         """Update LED provider configuration"""
         self.provider = provider
 
@@ -79,6 +82,8 @@ class LEDInterface:
             speed = speed if speed is not None else 128
             intensity = intensity if intensity is not None else 128
             self._controller = DWLEDController(num_leds, gpio_pin, brightness, pixel_order=pixel_order, speed=speed, intensity=intensity)
+        elif provider == "fluidnc":
+            self._controller = FluidNCLedController()
         else:
             self._controller = None
 
@@ -91,6 +96,8 @@ class LEDInterface:
             return wled_loading(self._controller)
         elif self.provider == "dw_leds":
             return dw_led_loading(self._controller)
+        elif self.provider == "fluidnc":
+            return fluidnc_loading(self._controller)
         return False
 
     def effect_idle(self, effect_name: Optional[str] = None) -> bool:
@@ -102,6 +109,8 @@ class LEDInterface:
             return wled_idle(self._controller)
         elif self.provider == "dw_leds":
             return dw_led_idle(self._controller, effect_name)
+        elif self.provider == "fluidnc":
+            return fluidnc_idle(self._controller, effect_name)
         return False
 
     def effect_connected(self) -> bool:
@@ -113,6 +122,8 @@ class LEDInterface:
             return wled_connected(self._controller)
         elif self.provider == "dw_leds":
             return dw_led_connected(self._controller)
+        elif self.provider == "fluidnc":
+            return fluidnc_connected(self._controller)
         return False
 
     def effect_playing(self, effect_name: Optional[str] = None) -> bool:
@@ -124,6 +135,8 @@ class LEDInterface:
             return wled_playing(self._controller)
         elif self.provider == "dw_leds":
             return dw_led_playing(self._controller, effect_name)
+        elif self.provider == "fluidnc":
+            return fluidnc_playing(self._controller, effect_name)
         return False
 
     def set_power(self, state: int) -> dict:
@@ -141,6 +154,8 @@ class LEDInterface:
         if self.provider == "wled":
             return self._controller.check_wled_status()
         elif self.provider == "dw_leds":
+            return self._controller.check_status()
+        elif self.provider == "fluidnc":
             return self._controller.check_status()
 
         return {"connected": False, "message": "Unknown provider"}

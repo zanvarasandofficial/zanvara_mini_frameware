@@ -99,7 +99,7 @@ class AppState:
         self.port = None
         self.preferred_port = None  # User's preferred port for auto-connect
         self.wled_ip = None
-        self.led_provider = "none"  # "wled", "dw_leds", or "none"
+        self.led_provider = "none"  # "wled", "dw_leds", "fluidnc", or "none"
         self.led_controller = None
         self.screen_controller = None
 

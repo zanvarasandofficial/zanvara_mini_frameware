@@ -81,7 +81,7 @@ interface AutoPlaySettings {
 }
 
 interface LedConfig {
-  provider: 'none' | 'wled' | 'dw_leds'
+  provider: 'none' | 'wled' | 'dw_leds' | 'fluidnc'
   wled_ip?: string
   num_leds?: number
   gpio_pin?: number
@@ -1509,6 +1509,10 @@ export function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="dw_leds" id="led-dw" />
                   <Label htmlFor="led-dw" className="font-normal">DW LEDs (GPIO)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="fluidnc" id="led-fluidnc" />
+                  <Label htmlFor="led-fluidnc" className="font-normal">FluidNC (M150)</Label>
                 </div>
               </RadioGroup>
             </div>

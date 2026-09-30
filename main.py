@@ -166,6 +166,19 @@ async def lifespan(app: FastAPI):
         if state.led_provider == "wled" and state.wled_ip:
             state.led_controller = LEDInterface("wled", state.wled_ip)
             logger.info(f"LED controller initialized: WLED at {state.wled_ip}")
+        elif state.led_provider == "fluidnc":
+            state.led_controller = LEDInterface("fluidnc")
+            logger.info("LED controller initialized: FluidNC (M150 Gcode)")
+            
+            # Start idle effect if automation enabled
+            status = state.led_controller.check_status()
+            if status.get("connected", False):
+                if state.led_automation_enabled:
+                    state.led_controller.effect_idle(state.dw_led_idle_effect)
+                    _start_idle_led_timeout()
+                    logger.info("FluidNC LEDs hardware initialized and idle effect started")
+                else:
+                    logger.info("FluidNC LEDs hardware initialized (manual mode, no auto-effect)")
         elif state.led_provider == "dw_leds":
             state.led_controller = LEDInterface(
                 "dw_leds",
@@ -435,7 +448,7 @@ class WLEDRequest(BaseModel):
     wled_ip: Optional[str] = None
 
 class LEDConfigRequest(BaseModel):
-    provider: str  # "wled", "dw_leds", or "none"
+    provider: str  # "wled", "dw_leds", "fluidnc", or "none"
     ip_address: Optional[str] = None  # For WLED only
     # DW LED specific fields
     num_leds: Optional[int] = None
@@ -509,7 +522,7 @@ class DwLedSettingsUpdate(BaseModel):
     idle_timeout_minutes: Optional[int] = None
 
 class LedSettingsUpdate(BaseModel):
-    provider: Optional[str] = None  # "none", "wled", "dw_leds"
+    provider: Optional[str] = None  # "none", "wled", "dw_leds", "fluidnc"
     wled_ip: Optional[str] = None
     control_mode: Optional[str] = None  # "manual" or "automated"
     dw_led: Optional[DwLedSettingsUpdate] = None
@@ -711,7 +724,7 @@ async def clear_logs():
 def get_redirect_response(request: Request):
     """Return redirect page pointing users to the new frontend."""
     host = request.headers.get("host", "localhost").split(":")[0]  # Remove port if present
-    return templates.TemplateResponse("redirect.html", {"request": request, "host": host})
+    return templates.TemplateResponse(request=request, name="redirect.html", context={"request": request, "host": host})
 
 @app.get("/")
 async def index(request: Request):
@@ -2631,9 +2644,9 @@ async def get_wled_ip():
 
 @app.post("/set_led_config", deprecated=True, tags=["settings-deprecated"])
 async def set_led_config(request: LEDConfigRequest):
-    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (WLED, DW LEDs, or none)"""
-    if request.provider not in ["wled", "dw_leds", "none"]:
-        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', or 'none'")
+    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (WLED, DW LEDs, fluidnc, or none)"""
+    if request.provider not in ["wled", "dw_leds", "fluidnc", "none"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', 'fluidnc', or 'none'")
 
     state.led_provider = request.provider
 
@@ -2643,6 +2656,11 @@ async def set_led_config(request: LEDConfigRequest):
         state.wled_ip = request.ip_address
         state.led_controller = LEDInterface("wled", request.ip_address)
         logger.info(f"LED provider set to WLED at {request.ip_address}")
+
+    elif request.provider == "fluidnc":
+        state.wled_ip = None
+        state.led_controller = LEDInterface("fluidnc")
+        logger.info("LED provider set to FluidNC (M150)")
 
     elif request.provider == "dw_leds":
         # Check if hardware settings changed (requires restart)
@@ -3534,7 +3552,7 @@ async def led_control_page(request: Request):
 @app.get("/api/dw_leds/status")
 async def dw_leds_status():
     """Get DW LED controller status"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         return {"connected": False, "message": "DW LEDs not configured"}
 
     try:
@@ -3546,7 +3564,7 @@ async def dw_leds_status():
 @app.post("/api/dw_leds/power")
 async def dw_leds_power(request: dict):
     """Control DW LED power (0=off, 1=on, 2=toggle)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     state_value = request.get("state", 1)
@@ -3570,7 +3588,7 @@ async def dw_leds_power(request: dict):
 @app.post("/api/dw_leds/brightness")
 async def dw_leds_brightness(request: dict):
     """Set DW LED brightness (0-100)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("value", 50)
@@ -3592,7 +3610,7 @@ async def dw_leds_brightness(request: dict):
 @app.post("/api/dw_leds/color")
 async def dw_leds_color(request: dict):
     """Set solid color (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Accept both formats: {"r": 255, "g": 0, "b": 0} or {"color": [255, 0, 0]}
@@ -3623,7 +3641,7 @@ async def dw_leds_color(request: dict):
 @app.post("/api/dw_leds/colors")
 async def dw_leds_colors(request: dict):
     """Set effect colors (color1, color2, color3) - manual UI control - always powers on LEDs"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Parse colors from request
@@ -3670,7 +3688,7 @@ async def dw_leds_colors(request: dict):
 @app.get("/api/dw_leds/effects")
 async def dw_leds_effects():
     """Get list of available effects"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3689,7 +3707,7 @@ async def dw_leds_effects():
 @app.get("/api/dw_leds/palettes")
 async def dw_leds_palettes():
     """Get list of available palettes"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3708,7 +3726,7 @@ async def dw_leds_palettes():
 @app.post("/api/dw_leds/effect")
 async def dw_leds_effect(request: dict):
     """Set effect by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     effect_id = request.get("effect_id", 0)
@@ -3730,7 +3748,7 @@ async def dw_leds_effect(request: dict):
 @app.post("/api/dw_leds/palette")
 async def dw_leds_palette(request: dict):
     """Set palette by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     palette_id = request.get("palette_id", 0)
@@ -3750,7 +3768,7 @@ async def dw_leds_palette(request: dict):
 @app.post("/api/dw_leds/speed")
 async def dw_leds_speed(request: dict):
     """Set effect speed (0-255)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("speed", 128)
@@ -3771,7 +3789,7 @@ async def dw_leds_speed(request: dict):
 @app.post("/api/dw_leds/intensity")
 async def dw_leds_intensity(request: dict):
     """Set effect intensity (0-255)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "fluidnc"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("intensity", 128)

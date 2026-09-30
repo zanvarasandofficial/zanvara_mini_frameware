@@ -88,7 +88,7 @@ class SerialConnection(BaseConnection):
 
     def readline(self) -> str:
         with self.lock:
-            return self.ser.readline().decode().strip()
+            return self.ser.readline().decode('utf-8', errors='ignore').strip()
 
     def in_waiting(self) -> int:
         with self.lock:
@@ -272,6 +272,9 @@ def connect_device(homing=True):
                 speed=state.dw_led_speed,
                 intensity=state.dw_led_intensity
             )
+    elif state.led_provider == "fluidnc":
+        if not state.led_controller or not state.led_controller.is_configured:
+            state.led_controller = LEDInterface(provider="fluidnc")
     elif state.led_provider == "hyperion" and state.hyperion_ip:
         state.led_controller = LEDInterface(
             provider="hyperion",

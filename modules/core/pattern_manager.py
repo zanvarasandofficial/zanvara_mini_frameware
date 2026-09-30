@@ -505,9 +505,10 @@ class MotionControlThread:
             return
 
         # This is the original sync logic but running in dedicated thread
-        if state.table_type == 'dune_weaver_mini':
+        effective_table_type = state.table_type_override or state.table_type
+        if effective_table_type == 'dune_weaver_mini':
             x_scaling_factor = 2
-            y_scaling_factor = 3.7
+            y_scaling_factor = 5.0
         else:
             x_scaling_factor = 2
             y_scaling_factor = 5
@@ -522,7 +523,7 @@ class MotionControlThread:
 
         offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
 
-        if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
+        if effective_table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
             y_increment -= offset
         else:
             y_increment += offset
